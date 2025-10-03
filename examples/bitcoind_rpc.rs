@@ -4,9 +4,10 @@ use bdk_bitcoind_rpc::{
 };
 use bdk_wallet::rusqlite::Connection;
 use bdk_wallet::{
-    bitcoin::{Block, Network},
+    bitcoin::{Network, Block, Transaction, Txid},
     KeychainKind, Wallet,
 };
+use bdk_core::BlockId;
 use clap::{self, Parser};
 use std::{
     path::PathBuf,
@@ -123,6 +124,10 @@ fn main() -> anyhow::Result<()> {
     println!("Wallet balance before syncing: {}", balance.total());
 
     let wallet_tip = wallet.latest_checkpoint();
+    let wallet_tip_bdk_bitcoind_rpc = bdk_core::CheckPoint::new(
+        wallet_tip.height(),
+        wallet_tip.hash(),
+    );
     println!(
         "Wallet tip: {} at height {}",
         wallet_tip.hash(),
@@ -138,13 +143,17 @@ fn main() -> anyhow::Result<()> {
             .expect("failed to send sigterm")
     });
 
+    let unconfirmed_txs: Vec<Arc<bdk_wallet::bitcoin::Transaction>> = wallet
+        .transactions()
+        .filter(|tx| tx.pos.is_unconfirmed())
+        .map(|tx| tx.tx.clone())
+        .collect();
+    
     let mut emitter = Emitter::new(
         rpc_client,
-        wallet_tip,
+        wallet_tip_bdk_bitcoind_rpc,
         args.start_height,
-        wallet
-            .transactions()
-            .filter(|tx| tx.chain_position.is_unconfirmed()),
+        unconfirmed_txs,
     );
     spawn(move || -> Result<(), anyhow::Error> {
         while let Some(emission) = emitter.next_block()? {
@@ -167,15 +176,35 @@ fn main() -> anyhow::Result<()> {
                 let hash = block_emission.block_hash();
                 let connected_to = block_emission.connected_to();
                 let start_apply_block = Instant::now();
-                wallet.apply_block_connected_to(&block_emission.block, height, connected_to)?;
+                // Convert block from bdk_bitcoind_rpc to bdk_wallet types
+                let block = bdk_wallet::bitcoin::Block {
+                    header: block_emission.block.header,
+                    txdata: block_emission.block.txdata.into_iter().map(|tx| tx.into()).collect(),
+                };
+                let connected_to_bdk_wallet = BlockId {
+                    height: connected_to.height,
+                    hash: connected_to.hash,
+                };
+                wallet.apply_block_connected_to(&block, height, connected_to_bdk_wallet)?;
                 wallet.persist(&mut db)?;
                 let elapsed = start_apply_block.elapsed().as_secs_f32();
                 println!("Applied block {hash} at height {height} in {elapsed}s");
             }
             Emission::Mempool(event) => {
                 let start_apply_mempool = Instant::now();
-                wallet.apply_evicted_txs(event.evicted);
-                wallet.apply_unconfirmed_txs(event.update);
+                // Convert evicted transactions
+                let evicted_bdk_wallet: Vec<(bdk_wallet::bitcoin::Txid, u64)> = event.evicted
+                    .into_iter()
+                    .map(|(txid, height)| (txid.into(), height))
+                    .collect();
+                wallet.apply_evicted_txs(evicted_bdk_wallet);
+                
+                // Convert unconfirmed transactions
+                let update_bdk_wallet: Vec<(Arc<bdk_wallet::bitcoin::Transaction>, u64)> = event.update
+                    .into_iter()
+                    .map(|(tx, height)| (tx.into(), height))
+                    .collect();
+                wallet.apply_unconfirmed_txs(update_bdk_wallet);
                 wallet.persist(&mut db)?;
                 println!(
                     "Applied unconfirmed transactions in {}s",

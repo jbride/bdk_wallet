@@ -147,7 +147,9 @@ impl IntoWalletDescriptor for (ExtendedDescriptor, KeyMap) {
             network: Network,
         }
 
-        impl miniscript::Translator<DescriptorPublicKey, String, DescriptorError> for Translator<'_, '_> {
+        impl miniscript::Translator<DescriptorPublicKey> for Translator<'_, '_> {
+            type TargetPk = String;
+            type Error = DescriptorError;
             fn pk(&mut self, pk: &DescriptorPublicKey) -> Result<String, DescriptorError> {
                 let secp = &self.secp;
 
@@ -223,9 +225,9 @@ impl IntoWalletDescriptor for DescriptorTemplateOut {
             network: Network,
         }
 
-        impl miniscript::Translator<DescriptorPublicKey, DescriptorPublicKey, DescriptorError>
-            for Translator
-        {
+        impl miniscript::Translator<DescriptorPublicKey> for Translator {
+            type TargetPk = DescriptorPublicKey;
+            type Error = DescriptorError;
             fn pk(
                 &mut self,
                 pk: &DescriptorPublicKey,
@@ -314,7 +316,7 @@ pub(crate) fn check_wallet_descriptor(
 
     if descriptor.is_multipath() {
         return Err(DescriptorError::Miniscript(
-            miniscript::Error::BadDescriptor(
+            miniscript::Error::Unexpected(
                 "`check_wallet_descriptor` must not contain multipath keys".to_string(),
             ),
         ));
@@ -890,7 +892,7 @@ mod test {
         assert_matches!(
             result,
             Err(DescriptorError::Miniscript(
-                miniscript::Error::BadDescriptor(_)
+                miniscript::Error::Unexpected(_)
             ))
         );
 

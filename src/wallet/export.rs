@@ -65,6 +65,7 @@ use miniscript::{Descriptor, ScriptContext, Terminal};
 
 use crate::types::KeychainKind;
 use crate::wallet::Wallet;
+use bdk_chain::ChainPosition;
 
 /// Alias for [`FullyNodedExport`]
 #[deprecated(since = "0.18.0", note = "Please use [`FullyNodedExport`] instead")]
@@ -129,10 +130,7 @@ impl FullyNodedExport {
 
         let blockheight = if include_blockheight {
             wallet.transactions().next().map_or(0, |canonical_tx| {
-                canonical_tx
-                    .chain_position
-                    .confirmation_height_upper_bound()
-                    .unwrap_or(0)
+                canonical_tx.pos.confirmation_height_upper_bound().unwrap_or(0)
             })
         } else {
             0

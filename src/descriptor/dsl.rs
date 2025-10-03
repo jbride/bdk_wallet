@@ -321,7 +321,7 @@ macro_rules! parse_tap_tree {
         use $crate::miniscript::descriptor::TapTree;
 
         $crate::fragment!( $op ( $( $minisc )* ) )
-            .map(|(a_minisc, a_keymap, a_networks)| (TapTree::Leaf(Arc::new(a_minisc)), a_keymap, a_networks))
+            .map(|(a_minisc, a_keymap, a_networks)| (TapTree::leaf(Arc::new(a_minisc)), a_keymap, a_networks))
     }};
 }
 

@@ -367,7 +367,7 @@ fn wallet_should_persist_anchors_and_recover() {
     } = wallet
         .get_tx(txid)
         .expect("should retrieve stored tx")
-        .chain_position
+        .pos
     {
         assert_eq!(obtained_anchor, expected_anchor)
     } else {

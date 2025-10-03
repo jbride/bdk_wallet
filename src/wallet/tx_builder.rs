@@ -184,7 +184,7 @@ impl<'a, Cs> TxBuilder<'a, Cs> {
     /// the `FeePolicy` enum will be set by whichever method was called last,
     /// as the [`FeeRate`] and `FeeAmount` are mutually exclusive.
     ///
-    /// Note that this is really a minimum absolute fee -- it's possible to
+    /// Note that this is really a minimum absolute fee -- it's possible tobdk_file_store
     /// overshoot it slightly since adding a change output to drain the remaining
     /// excess might not be viable.
     pub fn fee_absolute(&mut self, fee_amount: Amount) -> &mut Self {
@@ -1344,7 +1344,7 @@ mod test {
         assert_ne!(txid1, txid2);
 
         let utxo1 = wallet1.list_unspent().next().unwrap();
-        let tx1 = wallet1.get_tx(txid1).unwrap().tx_node.tx.clone();
+        let tx1 = wallet1.get_tx(txid1).unwrap().tx.clone();
 
         let satisfaction_weight = wallet1
             .public_descriptor(KeychainKind::External)

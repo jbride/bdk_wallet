@@ -359,7 +359,7 @@ fn test_bump_fee_remove_output_manually_selected_only() {
     };
 
     let position: ChainPosition<ConfirmationBlockTime> =
-        wallet.transactions().last().unwrap().chain_position;
+        wallet.transactions().last().unwrap().pos;
     insert_tx(&mut wallet, init_tx.clone());
     match position {
         ChainPosition::Confirmed { anchor, .. } => {
@@ -411,7 +411,7 @@ fn test_bump_fee_add_input() {
     };
     let txid = init_tx.compute_txid();
     let pos: ChainPosition<ConfirmationBlockTime> =
-        wallet.transactions().last().unwrap().chain_position;
+        wallet.transactions().last().unwrap().pos;
     insert_tx(&mut wallet, init_tx);
     match pos {
         ChainPosition::Confirmed { anchor, .. } => insert_anchor(&mut wallet, txid, anchor),
@@ -847,7 +847,7 @@ fn test_legacy_bump_fee_add_input() {
     };
     let txid = init_tx.compute_txid();
     let pos: ChainPosition<ConfirmationBlockTime> =
-        wallet.transactions().last().unwrap().chain_position;
+        wallet.transactions().last().unwrap().pos;
     insert_tx(&mut wallet, init_tx);
     match pos {
         ChainPosition::Confirmed { anchor, .. } => insert_anchor(&mut wallet, txid, anchor),

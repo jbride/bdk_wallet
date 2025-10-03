@@ -1160,13 +1160,31 @@ impl ExtractPolicy for Descriptor<DescriptorPublicKey> {
                     let mut items = vec![key_spend_sig];
                     items.append(
                         &mut tr
-                            .iter_scripts()
-                            .filter_map(|(_, ms)| {
-                                ms.extract_policy(signers, build_sat, secp).transpose()
+                            .leaves()
+                            .filter_map(|item| {
+                                item.miniscript().extract_policy(signers, build_sat, secp).transpose()
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     );
 
+                    Ok(Policy::make_thresh(items, 1)?)
+                }
+            }
+            Descriptor::Tsh(tsh) => {
+                // Tsh only supports script path spend, no key spend
+                let mut items = Vec::new();
+                items.append(
+                    &mut tsh
+                        .leaves()
+                        .filter_map(|item| {
+                            item.miniscript().extract_policy(signers, build_sat, secp).transpose()
+                        })
+                        .collect::<Result<Vec<_>, _>>()?,
+                );
+
+                if items.is_empty() {
+                    Ok(None)
+                } else {
                     Ok(Policy::make_thresh(items, 1)?)
                 }
             }

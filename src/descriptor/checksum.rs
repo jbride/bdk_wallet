@@ -17,20 +17,24 @@
 use crate::descriptor::DescriptorError;
 use alloc::string::String;
 
-use miniscript::descriptor::checksum::desc_checksum;
+use miniscript::descriptor::checksum::Engine;
 
 /// Compute the checksum of a descriptor, excludes any existing checksum in the descriptor string
 /// from the calculation
 pub fn calc_checksum(desc: &str) -> Result<String, DescriptorError> {
     if let Some(split) = desc.split_once('#') {
         let og_checksum = split.1;
-        let checksum = desc_checksum(split.0)?;
+        let mut engine = Engine::new();
+        engine.input(split.0).map_err(|e| DescriptorError::Miniscript(miniscript::Error::Unexpected(format!("Checksum error: {}", e))))?;
+        let checksum = engine.checksum();
         if og_checksum != checksum {
             return Err(DescriptorError::InvalidDescriptorChecksum);
         }
         Ok(checksum)
     } else {
-        Ok(desc_checksum(desc)?)
+        let mut engine = Engine::new();
+        engine.input(desc).map_err(|e| DescriptorError::Miniscript(miniscript::Error::Unexpected(format!("Checksum error: {}", e))))?;
+        Ok(engine.checksum())
     }
 }
 
@@ -80,7 +84,7 @@ mod test {
 
         assert_matches!(
             calc_checksum(&invalid_desc),
-            Err(DescriptorError::Miniscript(miniscript::Error::BadDescriptor(e))) if e == format!("Invalid character in checksum: '{sparkle_heart}'")
+            Err(DescriptorError::Miniscript(miniscript::Error::Unexpected(e))) if e == format!("Invalid character in checksum: '{sparkle_heart}'")
         );
     }
 }

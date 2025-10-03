@@ -14,6 +14,8 @@ use crate::{
     ChangeSet, CreateParams, LoadParams, Wallet,
 };
 
+// bdk_core::merge::Merge implementation removed - using chain::Merge instead
+
 /// Trait that persists [`PersistedWallet`].
 ///
 /// For an async version, use [`AsyncWalletPersister`].
@@ -331,7 +333,7 @@ impl WalletPersister for bdk_file_store::Store<ChangeSet> {
 }
 
 /// Error type for [`PersistedWallet::load`].
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum LoadWithPersistError<E> {
     /// Error from persistence.
     Persist(E),

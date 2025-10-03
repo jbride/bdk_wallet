@@ -84,11 +84,11 @@ fn test_get_funded_wallet_sent_and_received() {
 
     let mut tx_amounts: Vec<(Txid, (Amount, Amount))> = wallet
         .transactions()
-        .map(|ct| (ct.tx_node.txid, wallet.sent_and_received(&ct.tx_node)))
+        .map(|ct| (ct.txid, wallet.sent_and_received(&ct.tx)))
         .collect();
     tx_amounts.sort_by(|a1, a2| a1.0.cmp(&a2.0));
 
-    let tx = wallet.get_tx(txid).expect("transaction").tx_node.tx;
+    let tx = wallet.get_tx(txid).expect("transaction").tx;
     let (sent, received) = wallet.sent_and_received(&tx);
 
     // The funded wallet contains a tx with a 76_000 sats input and two outputs, one spending 25_000
@@ -102,7 +102,7 @@ fn test_get_funded_wallet_sent_and_received() {
 fn test_get_funded_wallet_tx_fees() {
     let (wallet, txid) = get_funded_wallet_wpkh();
 
-    let tx = wallet.get_tx(txid).expect("transaction").tx_node.tx;
+    let tx = wallet.get_tx(txid).expect("transaction").tx;
     let tx_fee = wallet.calculate_fee(&tx).expect("transaction fee");
 
     // The funded wallet contains a tx with a 76_000 sats input and two outputs, one spending 25_000
@@ -115,7 +115,7 @@ fn test_get_funded_wallet_tx_fees() {
 fn test_get_funded_wallet_tx_fee_rate() {
     let (wallet, txid) = get_funded_wallet_wpkh();
 
-    let tx = wallet.get_tx(txid).expect("transaction").tx_node.tx;
+    let tx = wallet.get_tx(txid).expect("transaction").tx;
     let tx_fee_rate = wallet
         .calculate_fee_rate(&tx)
         .expect("transaction fee rate");
@@ -135,7 +135,7 @@ fn test_get_funded_wallet_tx_fee_rate() {
 fn test_legacy_get_funded_wallet_tx_fee_rate() {
     let (wallet, txid) = get_funded_wallet_single(get_test_pkh());
 
-    let tx = wallet.get_tx(txid).expect("transaction").tx_node.tx;
+    let tx = wallet.get_tx(txid).expect("transaction").tx;
     let tx_fee_rate = wallet
         .calculate_fee_rate(&tx)
         .expect("transaction fee rate");
@@ -2140,7 +2140,7 @@ fn test_taproot_sign_using_non_witness_utxo() {
 
     psbt.inputs[0].witness_utxo = None;
     psbt.inputs[0].non_witness_utxo =
-        Some(wallet.get_tx(prev_txid).unwrap().tx_node.as_ref().clone());
+        Some(wallet.get_tx(prev_txid).unwrap().tx.as_ref().clone());
     assert!(
         psbt.inputs[0].non_witness_utxo.is_some(),
         "Previous tx should be present in the database"
@@ -2879,10 +2879,10 @@ fn test_transactions_sort_by() {
 
     // sort by chain position, unconfirmed then confirmed by descending block height
     let sorted_txs: Vec<WalletTx> =
-        wallet.transactions_sort_by(|t1, t2| t2.chain_position.cmp(&t1.chain_position));
+        wallet.transactions_sort_by(|t1, t2| t2.pos.cmp(&t1.pos));
     let conf_heights: Vec<Option<u32>> = sorted_txs
         .iter()
-        .map(|tx| tx.chain_position.confirmation_height_upper_bound())
+        .map(|tx| tx.pos.confirmation_height_upper_bound())
         .collect();
     assert_eq!([None, Some(2000), Some(1000)], conf_heights.as_slice());
 }
@@ -2901,11 +2901,12 @@ fn test_wallet_transactions_relevant() {
     let chain_tip = test_wallet.local_chain().tip().block_id();
     let canonical_tx_count_before = test_wallet
         .tx_graph()
-        .list_canonical_txs(
+        .canonical_view(
             test_wallet.local_chain(),
             chain_tip,
             CanonicalizationParams::default(),
         )
+        .txs()
         .count();
 
     // add not relevant transaction to test wallet
@@ -2922,25 +2923,27 @@ fn test_wallet_transactions_relevant() {
     let full_tx_count_after = test_wallet.tx_graph().full_txs().count();
     let canonical_tx_count_after = test_wallet
         .tx_graph()
-        .list_canonical_txs(
+        .canonical_view(
             test_wallet.local_chain(),
             chain_tip,
             CanonicalizationParams::default(),
         )
+        .txs()
         .count();
 
     assert_eq!(relevant_tx_count_before, relevant_tx_count_after);
     assert!(!test_wallet
         .transactions()
-        .any(|wallet_tx| wallet_tx.tx_node.txid == other_txid));
+        .any(|wallet_tx| wallet_tx.txid == other_txid));
     assert!(test_wallet
         .tx_graph()
-        .list_canonical_txs(
+        .canonical_view(
             test_wallet.local_chain(),
             chain_tip,
             CanonicalizationParams::default()
         )
-        .any(|wallet_tx| wallet_tx.tx_node.txid == other_txid));
+        .txs()
+        .any(|wallet_tx| wallet_tx.txid == other_txid));
     assert!(full_tx_count_before < full_tx_count_after);
     assert!(canonical_tx_count_before < canonical_tx_count_after);
 }

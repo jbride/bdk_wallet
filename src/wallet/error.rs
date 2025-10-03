@@ -20,10 +20,10 @@ use bitcoin::{absolute, psbt, Amount, OutPoint, Sequence, Txid};
 use core::fmt;
 
 /// Errors returned by miniscript when updating inconsistent PSBTs
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum MiniscriptPsbtError {
     /// Descriptor key conversion error
-    Conversion(miniscript::descriptor::ConversionError),
+    Conversion(miniscript::Error),
     /// Return error type for PsbtExt::update_input_with_descriptor
     UtxoUpdate(miniscript::psbt::UtxoUpdateError),
     /// Return error type for PsbtExt::update_output_with_descriptor
