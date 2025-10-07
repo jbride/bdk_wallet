@@ -446,8 +446,7 @@ impl Wallet {
         let genesis_hash = params
             .genesis_hash
             .unwrap_or(genesis_block(network).block_hash());
-        let chain = LocalChain::from_changeset(Default::default()).map_err(|_| DescriptorError::Miniscript(miniscript::Error::Unexpected("Failed to create LocalChain".to_string())))?;
-        let chain_changeset = Default::default();
+        let (chain, chain_changeset) = LocalChain::from_genesis(genesis_hash);
 
         let (descriptor, mut descriptor_keymap) = (params.descriptor)(&secp, network)?;
         check_wallet_descriptor(&descriptor)?;

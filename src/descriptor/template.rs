@@ -209,6 +209,52 @@ impl<K: IntoDescriptorKey<Tap>> DescriptorTemplate for P2TR<K> {
     }
 }
 
+/// P2TSH template. Creates a descriptor `tsh(tap_tree)`
+///
+/// ## Example
+///
+/// ```
+/// # use bdk_wallet::bitcoin::{PrivateKey, Network};
+/// # use bdk_wallet::Wallet;
+/// # use bdk_wallet::KeychainKind;
+/// use bdk_wallet::template::P2TSH;
+/// use bdk_wallet::fragment;
+///
+/// let key = bitcoin::PrivateKey::from_wif("cTc4vURSzdx6QE6KVynWGomDbLaA75dNALMNyfjh3p8DRRar84Um")?;
+/// let tap_tree = Some(fragment!(pk(key))?);
+/// let mut wallet = Wallet::create(P2TSH(tap_tree), P2TSH(tap_tree))
+///     .network(Network::Testnet)
+///     .create_wallet_no_persist()?;
+///
+/// assert_eq!(
+///     wallet
+///         .next_unused_address(KeychainKind::External)
+///         .to_string(),
+///     "tb1p..."
+/// );
+/// # Ok::<_, Box<dyn std::error::Error>>(())
+/// ```
+#[derive(Debug, Clone)]
+pub struct P2TSH<T>(pub T);
+
+impl<T> DescriptorTemplate for P2TSH<T> 
+where
+    T: Into<Option<miniscript::descriptor::TapTree<miniscript::DescriptorPublicKey>>>,
+{
+    fn build(self, _network: Network) -> Result<DescriptorTemplateOut, DescriptorError> {
+        use miniscript::descriptor::{Descriptor, DescriptorPublicKey, Tsh};
+        
+        let tap_tree = self.0.into();
+        let tsh = Tsh::new(tap_tree)?;
+        
+        Ok((
+            ExtendedDescriptor::Tsh(tsh),
+            KeyMap::default(),
+            crate::keys::any_network(),
+        ))
+    }
+}
+
 /// BIP44 template. Expands to `pkh(key/44'/{0,1}'/0'/{0,1}/*)`
 ///
 /// Since there are hardened derivation steps, this template requires a private derivable key

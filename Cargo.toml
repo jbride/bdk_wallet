@@ -1,8 +1,8 @@
 [package]
 name = "bdk_wallet"
 homepage = "https://bitcoindevkit.org"
-version = "3.0.0-alpha.0"
-repository = "https://github.com/bitcoindevkit/bdk_wallet"
+version = "3.0.0-alpha.0-p2tsh-0"
+repository = "https://github.com/cryptoquick/bdk_wallet"
 documentation = "https://docs.rs/bdk_wallet"
 description = "A modern, lightweight, descriptor-based wallet library"
 keywords = ["bitcoin", "wallet", "descriptor", "psbt"]
@@ -17,6 +17,8 @@ all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
+
+bitcoinpqc = { version="0.2.0", features = ["serde"] }
 
 # view configuration for "kellnr-denver-space":
 #   cat .cargo/config.toml
@@ -79,3 +81,6 @@ name = "esplora_blocking"
 
 [[example]]
 name = "bitcoind_rpc"
+
+[[example]]
+name = "p2tsh"

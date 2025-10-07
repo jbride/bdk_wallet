@@ -24,6 +24,55 @@
   </h4>
 </div>
 
+## P2TSH enablement
+
+### Overview
+
+This branch of `bdk_wallet` is enabled with a new address type (as per BIP-0360 ) called:  Pay-To-Tap-Script-Hash (P2TSH).
+
+Semi-related: this branch allows for very limited support for `Post-Quantum Cryptography` when using P2TSH.
+Currently, you can only use the SLH-DSA PQC as provided by the underlying `rust-bitcoin` dependency.
+You can not use the [Wallet](https://docs.rs/bdk_wallet/latest/bdk_wallet/struct.Wallet.html) structure from this `bdk_wallet` project when using PQC.
+
+
+### Usage
+All P2TSH/PQC enabled bitcoin crates ( to include this bdk_wallet project) are temporarily available in a custom crate registry at:  `https://crates.denver.space`.
+These crates will be made available in `crates.io` in the future.
+
+Subsequently, to use this version of `bdk_wallet`, you will need to execute the following at the root of your project:
+
+```bash
+mkdir .cargo \
+    && echo '[registries.kellnr-denver-space]
+index = "sparse+https://crates.denver.space/api/v1/crates/"' > .cargo/config
+```
+
+Afterwards, include this P2TSH/PQC enabled branch of `bdk_wallet` to your project as follows:
+
+```bash
+bdk_wallet = { version="3.0.0-alpha.0", registry = "kellnr-denver-space" }
+```
+
+Included in this branch is the following to get you started: [examples/p2tsh.rs](examples/p2tsh.rs).
+
+You can run this example as follows:
+
+```bash
+USE_PQH=false cargo run --example p2tsh
+```
+
+### PQC enablement of bdk_wallet
+
+Extensive changes to `bdk_wallet` and its dependencies will be needed to enable SLH-PQC as a first-class cryptography library.  Known challenges and gaps as follows:
+
+1. `secp256k1` is deeply embedded throughout the `bdk_wallet` stack: from key generation, to descriptors, to PSBT handling, to finalization.
+
+1. `rust-miniscript` will need changes to support tapleaf locking scripts (along with an additional BIP as alluded to BIP-0360):
+    ```bash
+    <SLH-DSA pubkey> OP_SUBSTR
+    ```
+    `rust-miniscript` is a critical dependency of `bdk_wallet` providing core functionality such as descriptor parsing, address generation and policy analysis.
+
 ## About
 
 The `bdk_wallet` project provides a high level descriptor based wallet API for building Bitcoin applications.
