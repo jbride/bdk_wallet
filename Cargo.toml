@@ -1,7 +1,7 @@
 [package]
 name = "bdk_wallet"
 homepage = "https://bitcoindevkit.org"
-version = "3.0.0-alpha.0-p2tsh-0"
+version = "3.0.0-alpha.0-pqc-0.1"
 repository = "https://github.com/cryptoquick/bdk_wallet"
 documentation = "https://docs.rs/bdk_wallet"
 description = "A modern, lightweight, descriptor-based wallet library"
@@ -22,9 +22,10 @@ bitcoinpqc = { version="0.2.0", features = ["serde"] }
 
 # view configuration for "kellnr-denver-space":
 #   cat .cargo/config.toml
-bdk_chain = { version = "0.23.2", features = ["miniscript", "serde"], default-features = false, registry = "kellnr-denver-space" }
 bitcoin = { version = "0.32.6", features = ["serde", "base64"], default-features = false, registry = "kellnr-denver-space" }
-miniscript = { version = "13.0.0", features = ["serde"], default-features = false, registry = "kellnr-denver-space" }
+miniscript = { version = "=13.0.0-pqc-0.2", features = ["serde"], default-features = false, registry = "kellnr-denver-space" }
+bdk_chain = { version = "=0.23.2-pqc-0.1", features = ["miniscript", "serde"], default-features = false, registry = "kellnr-denver-space" }
+
 
 rand_core = { version = "0.6.0" }
 serde_json = { version = "1" }

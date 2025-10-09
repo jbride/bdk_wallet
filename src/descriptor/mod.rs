@@ -29,7 +29,7 @@ use miniscript::descriptor::{
     DescriptorXKey, InnerXKey, KeyMap, SinglePubKey, Wildcard,
 };
 pub use miniscript::{
-    Descriptor, DescriptorPublicKey, Legacy, Miniscript, ScriptContext, Segwitv0,
+    Descriptor, DescriptorPublicKey, Legacy, Miniscript, NoSecp256k1Key, ScriptContext, Segwitv0,
 };
 use miniscript::{ForEachKey, MiniscriptKey, TranslatePk};
 

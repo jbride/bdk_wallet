@@ -52,7 +52,7 @@ use bitcoin::hashes::{hash160, ripemd160, sha256};
 use bitcoin::{absolute, key::XOnlyPublicKey, relative, PublicKey, Sequence};
 
 use miniscript::descriptor::{
-    DescriptorPublicKey, ShInner, SinglePub, SinglePubKey, SortedMultiVec, WshInner,
+    DescriptorPublicKey, ShInner, SinglePub, SinglePubKey, SlhDsaPublicKey, SortedMultiVec, WshInner,
 };
 use miniscript::{hash256, Threshold};
 use miniscript::{
@@ -71,6 +71,21 @@ use super::XKeyUtils;
 use bitcoin::psbt::{self, Psbt};
 use miniscript::psbt::PsbtInputSatisfier;
 
+// Wrapper for SlhDsaPublicKey to provide Serialize implementation
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SerializableSlhDsaKey(pub SlhDsaPublicKey);
+
+impl Serialize for SerializableSlhDsaKey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize as hex string representation using fmt::Display
+        use alloc::string::ToString;
+        self.0.to_string().serialize(serializer)
+    }
+}
+
 /// A unique identifier for a key
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -81,6 +96,8 @@ pub enum PkOrF {
     XOnlyPubkey(XOnlyPublicKey),
     /// An extended key fingerprint
     Fingerprint(Fingerprint),
+    /// A post-quantum SLH-DSA public key
+    SlhDsaPubkey(SerializableSlhDsaKey),
 }
 
 impl PkOrF {
@@ -111,6 +128,8 @@ pub enum SatisfiableItem {
     EcdsaSignature(PkOrF),
     /// Schnorr Signature for a raw public key
     SchnorrSignature(PkOrF),
+    /// SLH-DSA (post-quantum) Signature for a public key
+    SlhDsaSignature(SerializableSlhDsaKey),
     /// SHA256 preimage hash
     Sha256Preimage {
         /// The digest value
@@ -831,6 +850,30 @@ fn generic_sig_in_psbt<
     })
 }
 
+/// Creates a policy for SLH-DSA (post-quantum) signatures
+/// 
+/// Phase 2 implementation: Creates a basic policy without signer integration.
+/// SLH-DSA keys are marked as requiring external signing since the current
+/// SignersContainer infrastructure doesn't support post-quantum keys.
+fn make_slh_dsa_signature(
+    key: &SlhDsaPublicKey,
+    _signers: &SignersContainer,
+    _build_sat: BuildSatisfaction,
+) -> Policy {
+    let mut policy: Policy = SatisfiableItem::SlhDsaSignature(SerializableSlhDsaKey(*key)).into();
+    
+    // Phase 2: Mark as requiring external satisfaction
+    // The current signer infrastructure doesn't support SLH-DSA keys,
+    // so we indicate this signature must be provided externally via
+    // a custom Satisfier implementation
+    policy.contribution = Satisfaction::None;
+    
+    // No PSBT support for SLH-DSA yet (non-standard)
+    policy.satisfaction = Satisfaction::None;
+    
+    policy
+}
+
 trait SigExt: ScriptContext {
     fn make_signature(
         key: &DescriptorPublicKey,
@@ -930,6 +973,9 @@ impl<Ctx: ScriptContext + 'static> ExtractPolicy for Miniscript<DescriptorPublic
             Terminal::PkK(pubkey) => Some(Ctx::make_signature(pubkey, signers, build_sat, secp)),
             Terminal::PkH(pubkey_hash) => {
                 Some(Ctx::make_signature(pubkey_hash, signers, build_sat, secp))
+            }
+            Terminal::SlhDsaPk(slh_dsa_key) => {
+                Some(make_slh_dsa_signature(slh_dsa_key, signers, build_sat))
             }
             Terminal::After(value) => {
                 let mut policy: Policy = SatisfiableItem::AbsoluteTimelock {

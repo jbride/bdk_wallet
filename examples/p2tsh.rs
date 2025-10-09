@@ -9,7 +9,7 @@
 //!
 //! This example demonstrates how to create and use P2TSH descriptors and wallets
 //! using either Schnorr keys (X-only public keys) or SLH-DSA post-quantum signatures
-//! based on the USE_PQH environment variable.
+//! based on the USE_PQC environment variable.
 
 use bdk_wallet::bitcoin::{Network, secp256k1};
 use bdk_wallet::bitcoin::key::{XOnlyPublicKey, Keypair};
@@ -18,6 +18,8 @@ use bdk_wallet::template::{DescriptorTemplate, P2TSH};
 use bdk_wallet::{KeychainKind, Wallet};
 use std::str::FromStr;
 use std::env;
+use std::collections::HashMap;
+use bitcoin::hex;
 
 use bdk_chain::BlockId;
 use bitcoin::BlockHash;
@@ -31,7 +33,11 @@ use bitcoinpqc::{
 // Import P2TSH functionality from the linked rust code
 use bitcoin::p2tsh::{P2tshBuilder, P2tshSpendInfo};
 use bitcoin::taproot::{TapTree, TapNodeHash, LeafVersion};
-use bitcoin::{ScriptBuf, Address};
+use bitcoin::{ScriptBuf, Address, Amount, FeeRate};
+
+// Import miniscript SLH-DSA support
+use bdk_wallet::miniscript::descriptor::{Tsh, TapTree as MiniscriptTapTree, SlhDsaPublicKey};
+use bdk_wallet::miniscript::{Miniscript, Tap, Satisfier, MiniscriptKey, ToPublicKey, NoSecp256k1Key};
 
 // Add these to your imports at the top
 use bdk_bitcoind_rpc::{
@@ -45,7 +51,7 @@ use std::io::Write;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check if post-quantum cryptography should be used
-    let use_pqh = env::var("USE_PQH").unwrap_or_else(|_| "false".to_string()) == "true";
+    let use_pqc = env::var("USE_PQC").unwrap_or_else(|_| "false".to_string()) == "true";
     
     // Override network if BITCOIN_NETWORK environment variable is set
     let network = env::var("BITCOIN_NETWORK")
@@ -59,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .unwrap_or(Network::Bitcoin);
     
-    if use_pqh {
+    if use_pqc {
         println!("P2TSH using SLH-DSA PQC; network: {}", network);
         println!("==================================================");
         use_slh_dsa_p2tsh(network)?;
@@ -165,73 +171,102 @@ fn use_schnorr_p2tsh(network: Network) -> Result<(), Box<dyn std::error::Error>>
 }
 
 fn use_slh_dsa_p2tsh(network: Network) -> Result<(), Box<dyn std::error::Error>> {
+    println!("\n=== Using Miniscript-based P2TSH with SLH-DSA ===\n");
     
-    // Generate SLH-DSA keypair
+    // Generate SLH-DSA keypair using bitcoinpqc
     let slh_dsa_keypair = acquire_slh_dsa_keypair();
     println!("Secret key size: {} bytes", secret_key_size(Algorithm::SLH_DSA_128S));
     println!("Public key size: {} bytes", public_key_size(Algorithm::SLH_DSA_128S));
     
-    // Create Huffman tree with multiple script leaves
-    let huffman_entries = create_huffman_tree_with_slh_dsa(&slh_dsa_keypair);
-    println!("✓ Created Huffman tree with {} script leaves", huffman_entries.len());
+    // Convert to miniscript's SlhDsaPublicKey type (32 bytes)
+    let slh_dsa_pubkey_bytes = &slh_dsa_keypair.public_key.bytes[..32];
+    let slh_dsa_key = SlhDsaPublicKey::from_slice(slh_dsa_pubkey_bytes)
+        .expect("Failed to create SlhDsaPublicKey");
     
-    // Use P2TSH builder with Huffman tree optimization
-    let p2tsh_builder = P2tshBuilder::with_huffman_tree(huffman_entries)
-        .expect("Failed to create P2TSH builder with Huffman tree");
+    println!("✓ SLH-DSA Public Key: {}", slh_dsa_key);
     
-    let p2tsh_spend_info = p2tsh_builder.clone().finalize()
-        .expect("Failed to finalize P2TSH spend info");
+    // Create a Miniscript that compiles to: <32-byte-slh-dsa-key> OP_SUCCESS127
+    //
+    // Note: NoSecp256k1Key is a placeholder type parameter for Miniscript<Pk, Ctx>
+    // - The slh_dsa_pk() method uses the concrete SlhDsaPublicKey type internally
+    // - NoSecp256k1Key satisfies the MiniscriptKey trait requirement without providing
+    //   actual secp256k1 key functionality
+    // - This makes the code self-documenting: it clearly indicates this miniscript
+    //   contains only post-quantum keys, no secp256k1 keys
+    let slh_dsa_ms: Miniscript<NoSecp256k1Key, Tap> = Miniscript::slh_dsa_pk(slh_dsa_key);
+    println!("✓ Created SLH-DSA miniscript: {}", slh_dsa_ms);
     
-    let merkle_root = p2tsh_spend_info.merkle_root.unwrap();
+    // Create taptree with SLH-DSA leaf
+    let tap_tree= MiniscriptTapTree::leaf(std::sync::Arc::new(slh_dsa_ms));
     
-    // Create P2TSH address directly (without BDK wallet)
-    let p2tsh_address = Address::p2tsh(Some(merkle_root), network);
+    println!("✓ Created TapTree with SLH-DSA leaf");
+    
+    // Create P2TSH descriptor using miniscript
+    // Note: NoSecp256k1Key is used to indicate this descriptor contains only post-quantum keys
+    let tsh: Tsh<NoSecp256k1Key> = Tsh::new(Some(tap_tree.clone()))
+        .expect("Failed to create Tsh descriptor");
+    
+    println!("✓ P2TSH Descriptor: {}", tsh);
+    
+    // Get script pubkey and address
+    let script_pubkey = tsh.script_pubkey();
+    let p2tsh_address = tsh.address(network);
     println!("✓ P2TSH Address: {}", p2tsh_address);
+    println!("  Script PubKey: {}", script_pubkey.as_script());
+    
+    // Calculate maximum satisfaction weight
+    if let Ok(weight) = tsh.max_weight_to_satisfy() {
+        println!("\n=== Weight Analysis ===");
+        println!("Max satisfaction weight: {} WU", weight.to_wu());
+        println!("  (~{} vBytes)", weight.to_vbytes_ceil());
+    }
+    
+    println!("\n=== SLH-DSA Notes ===");
+    println!("For fee estimation, calculate weight manually using descriptor.max_weight_to_satisfy()");
+    println!("SLH-DSA keys are visible in policy extraction");
+    println!("This enables wallet UIs to display post-quantum spending requirements.");
+    println!("\nKey improvements:");
+    println!("  ✓ SLH-DSA keys visible in policy JSON");
+    println!("  ✓ Policy type: SLH_DSA_SIGNATURE");
+    println!("  ✓ Backward compatible with existing code");
+    println!("\nNote: Full wallet integration (Phase 3) would require:");
+    println!("  - Signer infrastructure for PQC keys");
+    println!("  - PSBT extensions for 7857-byte signatures");
+    
+    // Demonstrate custom satisfier (conceptual - would need actual signing implementation)
+    println!("\n=== Custom Satisfier Pattern ===");
+    println!("To spend from this P2TSH output, implement a custom Satisfier:");
+    println!("  1. Implement Satisfier trait with lookup_slh_dsa_sig()");
+    println!("  2. Provide 7857-byte SLH-DSA signature via satisfier");
+    println!("  3. Call descriptor.satisfy(&my_satisfier) to build witness");
+    println!("  4. Add witness to transaction");
     
     Ok(())
 }
 
-// Create Huffman tree with SLH-DSA and Schnorr scripts
-fn create_huffman_tree_with_slh_dsa(slh_dsa_keypair: &KeyPair) -> Vec<(u32, ScriptBuf)> {
-    let mut huffman_entries = vec![];
-    
-    // Add SLH-DSA script leaf with higher weight (more likely to be used)
-    let slh_dsa_script = create_slh_dsa_script(slh_dsa_keypair);
-    huffman_entries.push((10, slh_dsa_script));
-    
-    // Add Schnorr script leaf as fallback with lower weight
-    let secp = secp256k1::Secp256k1::new();
-    let schnorr_keypair = secp256k1::Keypair::new(&secp, &mut secp256k1::rand::thread_rng());
-    let (xonly_pubkey, _parity) = XOnlyPublicKey::from_keypair(&schnorr_keypair);
-    let schnorr_script = create_schnorr_script(xonly_pubkey);
-    huffman_entries.push((5, schnorr_script));
-    
-    // Add additional script leaves for demonstration
-    for i in 0..3 {
-        let additional_keypair = secp256k1::Keypair::new(&secp, &mut secp256k1::rand::thread_rng());
-        let (additional_pubkey, _parity) = XOnlyPublicKey::from_keypair(&additional_keypair);
-        let additional_script = create_schnorr_script(additional_pubkey);
-        huffman_entries.push((2 + i, additional_script));
+// Example custom satisfier for SLH-DSA (conceptual implementation)
+// In production, this would look up actual signatures from a database/HSM
+struct SlhDsaSatisfier {
+    slh_dsa_sigs: HashMap<SlhDsaPublicKey, Vec<u8>>,
+}
+
+impl<Pk: MiniscriptKey + ToPublicKey> Satisfier<Pk> for SlhDsaSatisfier {
+    fn lookup_slh_dsa_sig(&self, pk: &SlhDsaPublicKey) -> Option<Vec<u8>> {
+        self.slh_dsa_sigs.get(pk).cloned()
     }
     
-    huffman_entries
+    // Other Satisfier methods would delegate to a base satisfier or return None
 }
 
-// Create SLH-DSA script: OP_PUSHBYTES_32 <32-byte pubkey> OP_SUBSTR
-fn create_slh_dsa_script(keypair: &KeyPair) -> ScriptBuf {
-    let pubkey_bytes = keypair.public_key.bytes.clone();
-    let mut script_bytes = vec![0x20]; // OP_PUSHBYTES_32
-    script_bytes.extend_from_slice(&pubkey_bytes);
-    script_bytes.push(0x7f); // OP_SUBSTR
-    ScriptBuf::from_bytes(script_bytes)
-}
-
-// Create Schnorr script: OP_PUSHBYTES_32 <32-byte pubkey> OP_CHECKSIG
-fn create_schnorr_script(pubkey: XOnlyPublicKey) -> ScriptBuf {
-    let mut script_bytes = vec![0x20]; // OP_PUSHBYTES_32
-    script_bytes.extend_from_slice(&pubkey.serialize());
-    script_bytes.push(0xac); // OP_CHECKSIG
-    ScriptBuf::from_bytes(script_bytes)
+// Helper function to create SlhDsaSatisfier with a signature
+#[allow(dead_code)]
+fn create_slh_dsa_satisfier(
+    slh_key: SlhDsaPublicKey,
+    signature: Vec<u8>,
+) -> SlhDsaSatisfier {
+    let mut sigs = HashMap::new();
+    sigs.insert(slh_key, signature);
+    SlhDsaSatisfier { slh_dsa_sigs: sigs }
 }
 
 fn acquire_slh_dsa_keypair() -> KeyPair {
